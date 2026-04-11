@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Quipd — a calm, distraction-free personal diary for capturing your thoughts." />
+  <title>Quipd</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Merriweather:ital,wght@0,400;1,400&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Background animation blobs -->
+  <div class="bg-animation" aria-hidden="true">
+    <svg class="bg-blob bg-blob--1" viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg">
+      <g transform="translate(300,300)">
+        <path d="M120,-157.6C152.7,-141.5,174.4,-102.6,183.6,-62.1C192.8,-21.6,189.4,20.5,175.1,58.4C160.7,96.2,135.3,129.8,102.6,156.2C69.8,182.6,29.7,201.8,-14.4,220.7C-58.5,239.6,-106.6,258.3,-143.8,238.4C-181,218.4,-207.2,159.8,-216.1,104.5C-225,49.2,-216.6,-2.8,-200.1,-49.2C-183.6,-95.6,-159,-136.4,-124.8,-152C-90.6,-167.6,-46.9,-158,-0.5,-157.4C45.8,-156.7,87.3,-173.7,120,-157.6Z"
+              fill="currentColor" />
+      </g>
+    </svg>
+    <svg class="bg-blob bg-blob--2" viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg">
+      <g transform="translate(300,300)">
+        <path d="M147.3,-195.2C189.6,-164.2,221.7,-122.4,233.1,-76.4C244.5,-30.3,235.3,19.9,215.5,64.7C195.7,109.5,165.3,148.8,127.1,174.4C88.9,199.9,42.9,211.7,-4.2,217.2C-51.2,222.7,-99.3,221.9,-138.6,200.1C-177.9,178.3,-208.4,135.5,-222.8,88.6C-237.2,41.8,-235.5,-9.1,-220.2,-53.5C-204.8,-97.9,-175.9,-135.8,-140.2,-168.4C-104.5,-201,-62,-228.3,-12.7,-212.1C36.6,-196,104.9,-226.2,147.3,-195.2Z"
+              fill="currentColor" />
+      </g>
+    </svg>
+    <svg class="bg-blob bg-blob--3" viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg">
+      <g transform="translate(300,300)">
+        <path d="M104.2,-139.1C136.5,-120.7,165.1,-93.4,180.8,-59.3C196.5,-25.2,199.3,15.8,186.8,51.5C174.4,87.3,146.7,117.8,114.4,142.6C82.1,167.4,45.2,186.5,3.6,181.8C-38.1,177.2,-84.5,148.8,-119.9,116.5C-155.3,84.2,-179.6,48,-188.7,6.5C-197.8,-35,-191.6,-81.9,-168.3,-117.5C-145,-153.1,-104.6,-177.4,-64.5,-191.1C-24.5,-204.8,15.2,-207.9,51.6,-196.5C88,-185,71.9,-157.5,104.2,-139.1Z"
+              fill="currentColor" />
+      </g>
+    </svg>
+  </div>
+
+  <div class="app-container">
+
+    <!-- Header -->
+    <header class="app-header" id="app-header">
+      <h1 class="brand">Quipd</h1>
+      <p class="tagline">quite unique and intelligent personal diary.</p>
+      <button class="theme-toggle" id="theme-toggle" title="Toggle dark mode" aria-label="Toggle dark mode">
+        <svg class="theme-icon theme-icon--sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/>
+          <line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/>
+          <line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <svg class="theme-icon theme-icon--moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+      <!-- New Entry Section -->
+      <section class="new-entry-section" id="new-entry-section">
+        <h2 class="section-title">New Entry</h2>
+        <form id="entry-form" autocomplete="off">
+          <div class="form-group form-group--editor">
+            <!-- Rich text toolbar -->
+            <div class="editor-toolbar" id="editor-toolbar">
+              <button type="button" class="toolbar-btn" data-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">
+                <strong>B</strong>
+              </button>
+              <button type="button" class="toolbar-btn" data-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">
+                <em>I</em>
+              </button>
+              <button type="button" class="toolbar-btn" data-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">
+                <span style="text-decoration:underline">U</span>
+              </button>
+            </div>
+
+            <!-- Contenteditable editor -->
+            <div
+              class="editor"
+              id="entry-content"
+              contenteditable="true"
+              spellcheck="false"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              role="textbox"
+              aria-multiline="true"
+              aria-label="Write your thoughts here"
+              data-placeholder="Write your thoughts here..."
+            ></div>
+            <span class="char-count" id="char-count">0 characters</span>
+          </div>
+
+          <div class="form-group">
+            <label for="entry-tags">Tags <span class="label-hint">(comma separated)</span></label>
+            <input
+              type="text"
+              id="entry-tags"
+              placeholder="e.g. personal, work, ideas"
+            />
+          </div>
+
+          <button type="submit" class="btn btn-primary" id="add-entry-btn">
+            Save Entry
+          </button>
+        </form>
+      </section>
+
+      <!-- Search & Filter -->
+      <section class="search-section" id="search-section">
+        <div class="search-wrapper">
+          <svg class="search-icon-svg" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.4"/>
+            <line x1="13.5" y1="13.5" x2="17" y2="17" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+          <input
+            type="text"
+            id="search-input"
+            placeholder="Search your entries..."
+            autocomplete="off"
+          />
+          <button class="search-clear" id="search-clear" title="Clear search" aria-label="Clear search">&times;</button>
+        </div>
+      </section>
+
+      <!-- Entries List -->
+      <section class="entries-section" id="entries-section">
+        <div class="entries-header">
+          <h2 class="section-title">Entries</h2>
+          <span class="entry-count" id="entry-count"></span>
+        </div>
+
+        <!-- Empty state -->
+        <div class="empty-state" id="empty-state">
+          <p>No entries yet. Begin by writing your first thought above.</p>
+        </div>
+
+        <!-- No results state -->
+        <div class="no-results-state" id="no-results-state" style="display:none;">
+          <p>No entries match your search.</p>
+        </div>
+
+        <!-- Entries container -->
+        <div id="entries-list" class="entries-list"></div>
+      </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>Quipd &mdash; your thoughts, privately kept.</p>
+    </footer>
+
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
