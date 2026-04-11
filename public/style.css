@@ -933,8 +933,14 @@ input[type="text"]::placeholder {
   height: 18px;
 }
 
-/* Default: show Google logo, hide logout */
-.auth-icon--google {
+/* GitHub icon inherits text color for theme adaptability */
+.auth-icon--github {
+  color: var(--color-text-secondary);
+}
+
+/* Default: show provider logos, hide logout */
+.auth-icon--google,
+.auth-icon--github {
   display: block;
 }
 .auth-icon--logout {
@@ -942,7 +948,10 @@ input[type="text"]::placeholder {
   color: var(--color-text-secondary);
 }
 
-/* Logged in: show logout, hide Google */
+/* Logged in: hide both provider buttons, show logout on Google btn */
+body[data-auth="true"] .auth-btn--github {
+  display: none;
+}
 body[data-auth="true"] .auth-icon--google {
   display: none;
 }

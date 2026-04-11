@@ -34,6 +34,7 @@ const noResultsState  = document.getElementById('no-results-state');
 const entryCountEl    = document.getElementById('entry-count');
 const themeToggle     = document.getElementById('theme-toggle');
 const authBtn         = document.getElementById('auth-btn');
+const authBtnGithub   = document.getElementById('auth-btn-github');
 
 // === State ===
 let allEntries = [];
@@ -72,8 +73,9 @@ async function initAuth() {
     handleAuthChange(session);
   });
 
-  // Wire up auth button
+  // Wire up auth buttons
   authBtn.addEventListener('click', handleAuthClick);
+  authBtnGithub.addEventListener('click', handleGithubClick);
 }
 
 /**
@@ -121,6 +123,33 @@ async function handleAuthClick() {
     if (error) {
       console.error('Sign in error:', error.message);
       showToast('Failed to sign in', 'error');
+    }
+  }
+}
+
+/**
+ * Handles GitHub auth button click.
+ */
+async function handleGithubClick() {
+  if (currentUser) {
+    // Already logged in — sign out
+    const { error } = await sbClient.auth.signOut();
+    if (error) {
+      console.error('Sign out error:', error.message);
+      showToast('Failed to sign out', 'error');
+    } else {
+      showToast('Signed out', 'success');
+    }
+  } else {
+    const { error } = await sbClient.auth.signInWithOAuth({
+      provider: 'github',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+    if (error) {
+      console.error('GitHub sign in error:', error.message);
+      showToast('Failed to sign in with GitHub', 'error');
     }
   }
 }
