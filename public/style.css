@@ -851,10 +851,19 @@ input[type="text"]::placeholder {
 
 
 /* ==========================================
-   THEME TOGGLE
+   HEADER ACTIONS (theme toggle + auth)
    ========================================== */
 
-.theme-toggle {
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.theme-toggle,
+.auth-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -916,6 +925,29 @@ input[type="text"]::placeholder {
 /* Dark mode blob adjustment */
 [data-theme="dark"] .bg-blob {
   opacity: 0.03;
+}
+
+/* --- Auth button icon states --- */
+.auth-icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* Default: show Google logo, hide logout */
+.auth-icon--google {
+  display: block;
+}
+.auth-icon--logout {
+  display: none;
+  color: var(--color-text-secondary);
+}
+
+/* Logged in: show logout, hide Google */
+body[data-auth="true"] .auth-icon--google {
+  display: none;
+}
+body[data-auth="true"] .auth-icon--logout {
+  display: block;
 }
 
 

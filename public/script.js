@@ -2,10 +2,11 @@
  * Quipd — Frontend Logic
  *
  * Handles:
+ *  - Supabase Auth (Google OAuth login/logout)
  *  - Dark mode toggle with localStorage persistence
  *  - Rich text editor (bold, italic, underline)
  *  - Fetching and rendering diary entries
- *  - Creating new entries (POST)
+ *  - Creating new entries (POST) linked to user
  *  - Deleting entries (DELETE) with confirmation
  *  - Real-time search/filter by content and tags
  *  - Toast notifications for user feedback
@@ -13,6 +14,11 @@
 
 // === Configuration ===
 const API_BASE = '/entries';
+const SUPABASE_URL = 'https://bcigoossgislfoebayuf.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJjaWdvb3NzZ2lzbGZvZWJheXVmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5MTc1NjcsImV4cCI6MjA5MTQ5MzU2N30.GaygdgSEYn4R4BOjDt1MqIftYecpRMpw7l1zgBC_eFQ';
+
+// === Supabase Client (frontend) ===
+const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // === DOM References ===
 const entryForm       = document.getElementById('entry-form');
@@ -27,16 +33,18 @@ const emptyState      = document.getElementById('empty-state');
 const noResultsState  = document.getElementById('no-results-state');
 const entryCountEl    = document.getElementById('entry-count');
 const themeToggle     = document.getElementById('theme-toggle');
+const authBtn         = document.getElementById('auth-btn');
 
 // === State ===
 let allEntries = [];
+let currentUser = null;
 
 // === Initialization ===
 document.addEventListener('DOMContentLoaded', init);
 
-function init() {
+async function init() {
   initTheme();
-  fetchEntries();
+  await initAuth();
   attachEventListeners();
   initEditor();
 }
@@ -48,26 +56,90 @@ function attachEventListeners() {
   searchClear.addEventListener('click', clearSearch);
 }
 
-// === Rich Text Editor ===
+// === Auth ===
+
+/**
+ * Initializes auth: checks current session, sets up listener,
+ * handles OAuth redirect, and wires up the auth button.
+ */
+async function initAuth() {
+  // Check for existing session
+  const { data: { session } } = await sbClient.auth.getSession();
+  handleAuthChange(session);
+
+  // Listen for auth state changes (login, logout, token refresh)
+  sbClient.auth.onAuthStateChange((_event, session) => {
+    handleAuthChange(session);
+  });
+
+  // Wire up auth button
+  authBtn.addEventListener('click', handleAuthClick);
+}
+
+/**
+ * Updates UI and state based on auth session.
+ */
+function handleAuthChange(session) {
+  if (session && session.user) {
+    currentUser = session.user;
+    document.body.setAttribute('data-auth', 'true');
+    authBtn.title = 'Sign out';
+    authBtn.setAttribute('aria-label', 'Sign out');
+    fetchEntries();
+  } else {
+    currentUser = null;
+    document.body.removeAttribute('data-auth');
+    authBtn.title = 'Sign in with Google';
+    authBtn.setAttribute('aria-label', 'Sign in with Google');
+    // Clear entries when logged out
+    allEntries = [];
+    renderEntries([]);
+  }
+}
+
+/**
+ * Handles auth button click: login or logout.
+ */
+async function handleAuthClick() {
+  if (currentUser) {
+    // Logout
+    const { error } = await sbClient.auth.signOut();
+    if (error) {
+      console.error('Sign out error:', error.message);
+      showToast('Failed to sign out', 'error');
+    } else {
+      showToast('Signed out', 'success');
+    }
+  } else {
+    // Login with Google
+    const { error } = await sbClient.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+    if (error) {
+      console.error('Sign in error:', error.message);
+      showToast('Failed to sign in', 'error');
+    }
+  }
+}
 
 // === Theme Toggle ===
 
 /**
  * Initializes the theme based on localStorage or system preference.
- * Attaches the toggle click handler.
  */
 function initTheme() {
   const saved = localStorage.getItem('quipd-theme');
   if (saved) {
     document.documentElement.setAttribute('data-theme', saved);
   } else {
-    // Respect system preference
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     if (prefersDark) {
       document.documentElement.setAttribute('data-theme', 'dark');
     }
   }
-
   themeToggle.addEventListener('click', toggleTheme);
 }
 
@@ -77,13 +149,11 @@ function initTheme() {
 function toggleTheme() {
   const current = document.documentElement.getAttribute('data-theme');
   const next = current === 'dark' ? 'light' : 'dark';
-
   if (next === 'light') {
     document.documentElement.removeAttribute('data-theme');
   } else {
     document.documentElement.setAttribute('data-theme', 'dark');
   }
-
   localStorage.setItem('quipd-theme', next);
 }
 
@@ -91,14 +161,12 @@ function toggleTheme() {
 
 /**
  * Sets up the toolbar buttons for the rich text editor.
- * Uses execCommand for bold, italic, underline formatting.
  */
 function initEditor() {
   const toolbarButtons = editorToolbar.querySelectorAll('.toolbar-btn');
 
   toolbarButtons.forEach(btn => {
     btn.addEventListener('mousedown', (e) => {
-      // Prevent losing focus from the editor
       e.preventDefault();
     });
 
@@ -110,11 +178,8 @@ function initEditor() {
     });
   });
 
-  // Update toolbar active state when selection changes
   entryContent.addEventListener('keyup', updateToolbarState);
   entryContent.addEventListener('mouseup', updateToolbarState);
-
-  // Handle paste — strip external formatting, keep only our supported tags
   entryContent.addEventListener('paste', handlePaste);
 }
 
@@ -131,7 +196,7 @@ function updateToolbarState() {
 }
 
 /**
- * Handles paste events — strips down to allowed formatting only.
+ * Handles paste events — strips to plain text.
  */
 function handlePaste(e) {
   e.preventDefault();
@@ -142,11 +207,17 @@ function handlePaste(e) {
 // === API Functions ===
 
 /**
- * Fetches all entries from the backend and renders them.
+ * Fetches entries for the current user from the backend.
  */
 async function fetchEntries() {
+  if (!currentUser) {
+    allEntries = [];
+    renderEntries([]);
+    return;
+  }
+
   try {
-    const res = await fetch(API_BASE);
+    const res = await fetch(`${API_BASE}?user_id=${currentUser.id}`);
     if (!res.ok) throw new Error('Failed to fetch entries');
     allEntries = await res.json();
     renderEntries(allEntries);
@@ -157,13 +228,13 @@ async function fetchEntries() {
 }
 
 /**
- * Sends a new entry to the backend.
+ * Sends a new entry to the backend with user_id.
  */
 async function createEntry(content, tags) {
   const res = await fetch(API_BASE, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, tags }),
+    body: JSON.stringify({ content, tags, user_id: currentUser.id }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -188,13 +259,17 @@ async function deleteEntry(id) {
 
 /**
  * Handles the new entry form submission.
- * Reads innerHTML from the contenteditable editor.
  */
 async function handleFormSubmit(e) {
   e.preventDefault();
 
+  // Check if user is logged in
+  if (!currentUser) {
+    showToast('Please login to save your data', 'error');
+    return;
+  }
+
   const content = entryContent.innerHTML.trim();
-  // Check for truly empty content (may contain empty tags)
   const textOnly = entryContent.textContent.trim();
   if (!textOnly) return;
 
@@ -202,7 +277,6 @@ async function handleFormSubmit(e) {
 
   try {
     await createEntry(content, tags);
-    // Clear editor
     entryContent.innerHTML = '';
     entryTags.value = '';
     updateCharCount();
@@ -228,7 +302,6 @@ function handleSearch() {
   }
 
   const filtered = allEntries.filter(entry => {
-    // Strip HTML tags for content search
     const plainContent = stripHtml(entry.content).toLowerCase();
     const contentMatch = plainContent.includes(query);
     const tagMatch = entry.tags.some(tag => tag.toLowerCase().includes(query));
@@ -260,8 +333,6 @@ function updateCharCount() {
 
 /**
  * Renders a list of entries to the DOM.
- * @param {Array} entries - Entries to render.
- * @param {boolean} isSearchResult - Whether this is a filtered search result.
  */
 function renderEntries(entries, isSearchResult = false) {
   entriesList.innerHTML = '';
@@ -294,7 +365,6 @@ function createEntryCard(entry, index) {
   card.style.animationDelay = `${index * 40}ms`;
   card.dataset.entryId = entry.id;
 
-  // Header: date + delete button
   const header = document.createElement('div');
   header.className = 'entry-card-header';
 
@@ -312,12 +382,10 @@ function createEntryCard(entry, index) {
   header.appendChild(dateEl);
   header.appendChild(deleteBtn);
 
-  // Content — render as HTML to preserve rich text formatting
   const contentEl = document.createElement('div');
   contentEl.className = 'entry-content';
   contentEl.innerHTML = entry.content;
 
-  // Tags
   const tagsContainer = document.createElement('div');
   tagsContainer.className = 'entry-tags';
   entry.tags.forEach(tag => {
@@ -418,8 +486,6 @@ function formatDate(isoString) {
 
 /**
  * Shows a toast notification.
- * @param {string} message - The message to display.
- * @param {'success'|'error'} type - The type of notification.
  */
 function showToast(message, type = 'success') {
   const existing = document.querySelector('.toast');

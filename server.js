@@ -19,13 +19,20 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- API Routes ---
 
 /**
- * GET /entries
- * Returns all diary entries, sorted newest first.
+ * GET /entries?user_id=<uuid>
+ * Returns all diary entries for a specific user, sorted newest first.
  */
 app.get('/entries', async (req, res) => {
+  const { user_id } = req.query;
+
+  if (!user_id) {
+    return res.status(400).json({ error: 'user_id query parameter is required.' });
+  }
+
   const { data, error } = await supabase
     .from('entries')
     .select('*')
+    .eq('user_id', user_id)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -38,11 +45,15 @@ app.get('/entries', async (req, res) => {
 
 /**
  * POST /entries
- * Creates a new diary entry.
- * Body: { content: string, tags: string[] }
+ * Creates a new diary entry linked to a user.
+ * Body: { content: string, tags: string[], user_id: string }
  */
 app.post('/entries', async (req, res) => {
-  const { content, tags } = req.body;
+  const { content, tags, user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ error: 'user_id is required.' });
+  }
 
   if (!content || typeof content !== 'string' || content.trim().length === 0) {
     return res.status(400).json({ error: 'Content is required and must be a non-empty string.' });
@@ -57,6 +68,7 @@ app.post('/entries', async (req, res) => {
     content: content.trim(),
     created_at: new Date().toISOString(),
     tags: sanitizedTags,
+    user_id,
   };
 
   const { data, error } = await supabase
