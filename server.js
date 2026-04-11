@@ -1,50 +1,20 @@
 const express = require('express');
-const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATA_FILE = path.join(__dirname, 'data', 'entries.json');
+
+// --- Supabase Client ---
+const SUPABASE_URL = 'https://bcigoossgislfoebayuf.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJjaWdvb3NzZ2lzbGZvZWJheXVmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5MTc1NjcsImV4cCI6MjA5MTQ5MzU2N30.GaygdgSEYn4R4BOjDt1MqIftYecpRMpw7l1zgBC_eFQ';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // --- Middleware ---
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-
-// --- Helper Functions ---
-
-/**
- * Reads entries from the JSON data file.
- * Returns an empty array if the file is missing or malformed.
- */
-function readEntries() {
-  try {
-    const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-    return JSON.parse(raw);
-  } catch (err) {
-    console.error('Error reading entries file:', err.message);
-    return [];
-  }
-}
-
-/**
- * Writes entries array to the JSON data file.
- * Creates the data directory if it doesn't exist.
- */
-function writeEntries(entries) {
-  const dir = path.dirname(DATA_FILE);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  fs.writeFileSync(DATA_FILE, JSON.stringify(entries, null, 2), 'utf-8');
-}
-
-/**
- * Generates a unique ID for a new entry.
- */
-function generateId() {
-  return crypto.randomUUID();
-}
 
 // --- API Routes ---
 
@@ -52,10 +22,18 @@ function generateId() {
  * GET /entries
  * Returns all diary entries, sorted newest first.
  */
-app.get('/entries', (req, res) => {
-  const entries = readEntries();
-  entries.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  res.json(entries);
+app.get('/entries', async (req, res) => {
+  const { data, error } = await supabase
+    .from('entries')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Supabase GET error:', error.message);
+    return res.status(500).json({ error: 'Failed to fetch entries.' });
+  }
+
+  res.json(data);
 });
 
 /**
@@ -63,7 +41,7 @@ app.get('/entries', (req, res) => {
  * Creates a new diary entry.
  * Body: { content: string, tags: string[] }
  */
-app.post('/entries', (req, res) => {
+app.post('/entries', async (req, res) => {
   const { content, tags } = req.body;
 
   if (!content || typeof content !== 'string' || content.trim().length === 0) {
@@ -75,39 +53,58 @@ app.post('/entries', (req, res) => {
     : [];
 
   const entry = {
-    id: generateId(),
+    id: crypto.randomUUID(),
     content: content.trim(),
     created_at: new Date().toISOString(),
     tags: sanitizedTags,
   };
 
-  const entries = readEntries();
-  entries.push(entry);
-  writeEntries(entries);
+  const { data, error } = await supabase
+    .from('entries')
+    .insert(entry)
+    .select()
+    .single();
 
-  res.status(201).json(entry);
+  if (error) {
+    console.error('Supabase POST error:', error.message);
+    return res.status(500).json({ error: 'Failed to create entry.' });
+  }
+
+  res.status(201).json(data);
 });
 
 /**
  * DELETE /entries/:id
  * Deletes a diary entry by its ID.
  */
-app.delete('/entries/:id', (req, res) => {
+app.delete('/entries/:id', async (req, res) => {
   const { id } = req.params;
-  let entries = readEntries();
-  const index = entries.findIndex(e => e.id === id);
 
-  if (index === -1) {
+  // Check if entry exists
+  const { data: existing, error: fetchErr } = await supabase
+    .from('entries')
+    .select('id')
+    .eq('id', id)
+    .single();
+
+  if (fetchErr || !existing) {
     return res.status(404).json({ error: 'Entry not found.' });
   }
 
-  entries.splice(index, 1);
-  writeEntries(entries);
+  const { error } = await supabase
+    .from('entries')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Supabase DELETE error:', error.message);
+    return res.status(500).json({ error: 'Failed to delete entry.' });
+  }
 
   res.json({ message: 'Entry deleted successfully.' });
 });
 
 // --- Start Server ---
 app.listen(PORT, () => {
-  console.log(`Diary app running at http://localhost:${PORT}`);
+  console.log(`Quipd running at http://localhost:${PORT}`);
 });
