@@ -2,7 +2,6 @@
  * Quipd — Frontend Logic
  *
  * Handles:
- *  - Supabase Auth (Google OAuth login/logout)
  *  - Dark mode toggle with localStorage persistence
  *  - Rich text editor (bold, italic, underline)
  *  - Fetching and rendering diary entries
@@ -10,6 +9,8 @@
  *  - Deleting entries (DELETE) with confirmation
  *  - Real-time search/filter by content and tags
  *  - Toast notifications for user feedback
+ *
+ * Auth logic is in auth.js (initAuth, handleAuthClick, handleGithubClick).
  */
 
 // === Configuration ===
@@ -45,7 +46,7 @@ document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
   initTheme();
-  await initAuth();
+  await initAuth(sbClient, authBtn, authBtnGithub, handleAuthChange);
   attachEventListeners();
   initEditor();
 }
@@ -60,97 +61,22 @@ function attachEventListeners() {
 // === Auth ===
 
 /**
- * Initializes auth: checks current session, sets up listener,
- * handles OAuth redirect, and wires up the auth button.
- */
-async function initAuth() {
-  // Check for existing session
-  const { data: { session } } = await sbClient.auth.getSession();
-  handleAuthChange(session);
-
-  // Listen for auth state changes (login, logout, token refresh)
-  sbClient.auth.onAuthStateChange((_event, session) => {
-    handleAuthChange(session);
-  });
-
-  // Wire up auth buttons
-  authBtn.addEventListener('click', handleAuthClick);
-  authBtnGithub.addEventListener('click', handleGithubClick);
-}
-
-/**
  * Updates UI and state based on auth session.
+ * Called by initAuth() in auth.js whenever the session changes.
  */
 function handleAuthChange(session) {
   if (session && session.user) {
     currentUser = session.user;
     document.body.setAttribute('data-auth', 'true');
-    authBtn.title = 'Sign out';
-    authBtn.setAttribute('aria-label', 'Sign out');
+    updateAuthUI(currentUser, authBtn);
     fetchEntries();
   } else {
     currentUser = null;
     document.body.removeAttribute('data-auth');
-    authBtn.title = 'Sign in with Google';
-    authBtn.setAttribute('aria-label', 'Sign in with Google');
+    updateAuthUI(null, authBtn);
     // Clear entries when logged out
     allEntries = [];
     renderEntries([]);
-  }
-}
-
-/**
- * Handles auth button click: login or logout.
- */
-async function handleAuthClick() {
-  if (currentUser) {
-    // Logout
-    const { error } = await sbClient.auth.signOut();
-    if (error) {
-      console.error('Sign out error:', error.message);
-      showToast('Failed to sign out', 'error');
-    } else {
-      showToast('Signed out', 'success');
-    }
-  } else {
-    // Login with Google
-    const { error } = await sbClient.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin,
-      },
-    });
-    if (error) {
-      console.error('Sign in error:', error.message);
-      showToast('Failed to sign in', 'error');
-    }
-  }
-}
-
-/**
- * Handles GitHub auth button click.
- */
-async function handleGithubClick() {
-  if (currentUser) {
-    // Already logged in — sign out
-    const { error } = await sbClient.auth.signOut();
-    if (error) {
-      console.error('Sign out error:', error.message);
-      showToast('Failed to sign out', 'error');
-    } else {
-      showToast('Signed out', 'success');
-    }
-  } else {
-    const { error } = await sbClient.auth.signInWithOAuth({
-      provider: 'github',
-      options: {
-        redirectTo: window.location.origin,
-      },
-    });
-    if (error) {
-      console.error('GitHub sign in error:', error.message);
-      showToast('Failed to sign in with GitHub', 'error');
-    }
   }
 }
 
