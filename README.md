@@ -1,31 +1,104 @@
 # Quipd
 
-> **Quite Unique and Intelligent Personal Diary** — a calm, distraction-free journaling app with secure cloud sync.
+> **Quite Unique and Intelligent Personal Diary** — a calm, distraction-free personal journaling app with OAuth sign-in and secure per-user data isolation.
 
-**Live:** [quipd.vercel.app](https://quipd.vercel.app)
-
----
-
-## Features
-
-- **Rich text editor** — bold, italic, and underline formatting with a minimal toolbar
-- **Tag support** — organize entries with comma-separated tags; search by content or tag
-- **OAuth sign-in** — Google and GitHub login via Supabase Auth
-- **Secure API** — every request is authenticated server-side from the JWT; `user_id` is never trusted from the client
-- **Dark mode** — system-preference aware, persisted in `localStorage`
-- **Warm, minimal UI** — glassmorphism, animated background blobs, smooth transitions
+**Live demo:** [quipd.vercel.app](https://quipd.vercel.app)  
+**Repository:** [github.com/metastab/QUIPD](https://github.com/metastab/QUIPD)
 
 ---
 
-## Tech Stack
+## Overview
 
-| Layer | Technology |
+Quipd is a minimal personal diary built as a full-stack web application. Users can sign in with Google or GitHub, write rich-text journal entries with optional tags, search through their history, and delete entries — all with their data privately isolated to their own account.
+
+The core design goal was **simplicity without sacrificing security**: the UI is intentionally distraction-free, and the backend enforces user ownership at the server level rather than relying on anything the client sends.
+
+---
+
+## Live Links
+
+| | |
 |---|---|
-| Frontend | Vanilla HTML, CSS, JavaScript |
-| Backend | Node.js, Express |
-| Auth & Database | Supabase (Auth + PostgreSQL) |
-| Deployment | Vercel |
-| Fonts | Inter, Merriweather, Playfair Display |
+| **App** | [https://quipd.vercel.app](https://quipd.vercel.app) |
+| **API base** | `https://quipd.vercel.app/entries` |
+
+---
+
+## Approach & Design Decisions
+
+### 1. No password auth — OAuth only
+
+Rather than building a credential system, Quipd delegates authentication entirely to Supabase OAuth. Users sign in with Google or GitHub, which issues a short-lived JWT (`access_token`). This eliminates password storage, hashing, and reset flows entirely.
+
+### 2. Token-based API security — never trust the client
+
+The most important backend decision: **the server never accepts a `user_id` from the client.** A naive implementation would let the client POST `{ user_id: "someone-elses-id" }` and write to another user's data.
+
+Instead, every API request must carry a `Bearer` token in the `Authorization` header. The server extracts and verifies the token via `supabase.auth.getUser(token)`, which calls Supabase to validate the JWT signature and expiry. The verified `user.id` is then used server-side for all database queries.
+
+```
+Client                       Server                        Supabase
+  │                            │                              │
+  │── GET /entries ────────────▶│                              │
+  │   Authorization: Bearer <token>                           │
+  │                            │── auth.getUser(token) ───────▶│
+  │                            │◀── { user } ─────────────────│
+  │                            │── SELECT WHERE user_id = user.id ─▶│
+  │◀── [ entries ] ────────────│                              │
+```
+
+### 3. Auth logic is split from app logic
+
+`auth.js` is a standalone module containing `initAuth`, `handleAuthClick`, `handleGithubClick`, and `updateAuthUI`. It receives dependencies (the Supabase client, DOM references, a callback) as parameters so it has no implicit globals. `script.js` owns all entry and UI state, and passes `handleAuthChange` as the session callback.
+
+### 4. Token stored in memory, not localStorage
+
+`currentToken` (the Supabase `access_token`) is held in a plain JavaScript variable. It is set when a session starts and cleared to `null` on sign-out. Supabase also persists the session internally via `localStorage` so users stay logged in across page reloads — but Quipd never manually writes the raw token to storage.
+
+### 5. Vanilla stack — no framework
+
+The frontend is plain HTML, CSS, and JavaScript. The rich text editor uses `contenteditable` with `document.execCommand` (bold, italic, underline). There is no bundler or build step — the files are served statically by Express.
+
+### 6. Dark mode via CSS custom properties
+
+The entire design system is defined in CSS custom properties on `:root`. Dark mode overrides those tokens under `[data-theme="dark"]`. Toggling theme is a single attribute swap on `<html>`, with the preference persisted in `localStorage` and initialized from `prefers-color-scheme` if no saved preference exists.
+
+---
+
+## How It Works
+
+### Authentication flow
+
+1. User clicks the Google or GitHub button in the header.
+2. `handleAuthClick` / `handleGithubClick` in `auth.js` calls `supabase.auth.signInWithOAuth()`, redirecting to the provider.
+3. After the OAuth callback, Supabase redirects back to the app origin. Supabase JS detects the session from the URL hash/code and fires `onAuthStateChange`.
+4. `handleAuthChange` in `script.js` receives the session, stores `session.user` as `currentUser` and `session.access_token` as `currentToken`, sets `data-auth="true"` on `<body>` (which CSS uses to show authenticated UI), and triggers `fetchEntries()`.
+5. On sign-out, both values are cleared to `null`, the `data-auth` attribute is removed, and the entries list is emptied.
+
+### Entry lifecycle
+
+```
+Write → Submit → POST /entries (with Bearer token)
+                     └── server verifies token → inserts with req.user.id
+                                                       └── fetchEntries() re-renders list
+
+Delete → Confirm → DELETE /entries/:id (with Bearer token)
+                       └── server verifies token + checks user_id ownership
+                                                         └── fetchEntries() re-renders list
+```
+
+### Search
+
+Search is entirely client-side. `allEntries` holds the full list fetched from the server. The search input filters in real-time across both the plain text of the entry content (HTML is stripped before matching) and all tags. No additional network requests are made during a search session.
+
+### Server middleware chain
+
+```
+Request
+  └── express.static()         (serves public/ files)
+  └── authenticate middleware  (verifies JWT, attaches req.user)
+      └── route handler        (reads/writes Supabase using req.user.id)
+```
 
 ---
 
@@ -34,48 +107,38 @@
 ```
 QUIPD/
 ├── public/
-│   ├── index.html      # App shell and markup
-│   ├── style.css       # Design system and component styles
-│   ├── auth.js         # Supabase auth logic (initAuth, OAuth handlers)
-│   └── script.js       # App logic (entries, editor, search, rendering)
-├── server.js           # Express API with JWT middleware
+│   ├── index.html      # App shell, markup, and SVG assets
+│   ├── style.css       # Full design system (tokens, dark mode, components)
+│   ├── auth.js         # Auth module — OAuth login/logout, session listener
+│   └── script.js       # App logic — entries, editor, search, rendering, toasts
+├── server.js           # Express API — authenticate middleware + 3 routes
 ├── package.json
 └── .gitignore
 ```
 
 ---
 
-## Getting Started
+## API Reference
 
-### Prerequisites
+All endpoints require `Authorization: Bearer <supabase-access-token>`.
 
-- Node.js ≥ 18
-- A [Supabase](https://supabase.com) project with:
-  - A `entries` table (see [Database Setup](#database-setup))
-  - Google and/or GitHub OAuth enabled under **Authentication → Providers**
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/entries` | Returns all entries for the authenticated user, newest first |
+| `POST` | `/entries` | Creates a new entry |
+| `DELETE` | `/entries/:id` | Deletes an entry (ownership verified server-side) |
 
-### Installation
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/your-username/QUIPD.git
-cd QUIPD
-
-# 2. Install dependencies
-npm install
-
-# 3. Start the server
-npm start
+**POST `/entries` body:**
+```json
+{
+  "content": "<p>Your journal entry <strong>text</strong>.</p>",
+  "tags": ["personal", "ideas"]
+}
 ```
-
-The app will be available at `http://localhost:3000`.
 
 ---
 
-
-## Database Setup
-
-Run the following SQL in your Supabase SQL editor to create the `entries` table:
+## Database Schema
 
 ```sql
 create table entries (
@@ -86,35 +149,36 @@ create table entries (
   created_at  timestamptz not null
 );
 
--- Only allow users to read/modify their own entries
+-- Row Level Security — belt-and-suspenders alongside server-side checks
 alter table entries enable row level security;
 
 create policy "Users can manage their own entries"
-  on entries
-  for all
+  on entries for all
   using (auth.uid() = user_id);
 ```
 
 ---
 
-## API Reference
+## Assumptions
 
-All endpoints require an `Authorization: Bearer <supabase-access-token>` header. The user identity is extracted server-side from the token — the client never sends a `user_id`.
+- **One device at a time is fine.** There is no real-time sync between tabs or devices — the entry list is fetched on sign-in and after each create/delete. A page refresh will always show the latest data.
+- **The anon key is safe to expose.** Supabase's anon key is a public, scoped credential — it is intentionally embedded in the client. Actual data access is gated by Row Level Security and the server-side JWT check, not by keeping the key secret.
+- **Content is trusted as HTML.** Entry content is stored and rendered as raw HTML (via `contenteditable` + `innerHTML`). No server-side sanitization is applied beyond trimming whitespace. This is safe for a single-user personal diary but would require a sanitizer (e.g. DOMPurify) in a multi-user/public context.
+- **Tags are plain strings.** Tags are stored as a PostgreSQL `text[]` array. There is no tag normalization (e.g. lowercasing) on the server — the client trims whitespace and splits on commas, but case is preserved.
+- **Supabase handles token refresh.** The Supabase JS client automatically refreshes the `access_token` before it expires. `currentToken` in the app is kept in sync via `onAuthStateChange`, so all requests always use a valid token without any manual refresh logic.
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/entries` | Fetch all entries for the authenticated user |
-| `POST` | `/entries` | Create a new entry |
-| `DELETE` | `/entries/:id` | Delete an entry (ownership enforced) |
+---
 
-### POST `/entries` — Request Body
+## Tech Stack
 
-```json
-{
-  "content": "<p>Your journal entry...</p>",
-  "tags": ["personal", "ideas"]
-}
-```
+| Layer | Technology |
+|---|---|
+| Frontend | Vanilla HTML, CSS, JavaScript |
+| Backend | Node.js + Express 5 |
+| Auth & Database | Supabase (Auth + PostgreSQL) |
+| Analytics | Vercel Analytics |
+| Deployment | Vercel |
+| Fonts | Inter · Merriweather · Playfair Display (Google Fonts) |
 
 ---
 
