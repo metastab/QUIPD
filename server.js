@@ -16,23 +16,42 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// --- Auth Middleware ---
+
+/**
+ * Extracts and verifies the Supabase JWT from the Authorization header.
+ * Attaches the verified user to req.user on success.
+ * Responds with 401 if the token is missing, invalid, or expired.
+ */
+async function authenticate(req, res, next) {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+
+  if (!token) {
+    return res.status(401).json({ error: 'Missing authorization token.' });
+  }
+
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+
+  if (error || !user) {
+    return res.status(401).json({ error: 'Invalid or expired token.' });
+  }
+
+  req.user = user;
+  next();
+}
+
 // --- API Routes ---
 
 /**
- * GET /entries?user_id=<uuid>
- * Returns all diary entries for a specific user, sorted newest first.
+ * GET /entries
+ * Returns all diary entries for the authenticated user, sorted newest first.
+ * The user identity is taken from the verified JWT — not from query params.
  */
-app.get('/entries', async (req, res) => {
-  const { user_id } = req.query;
-
-  if (!user_id) {
-    return res.status(400).json({ error: 'user_id query parameter is required.' });
-  }
-
+app.get('/entries', authenticate, async (req, res) => {
   const { data, error } = await supabase
     .from('entries')
     .select('*')
-    .eq('user_id', user_id)
+    .eq('user_id', req.user.id)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -45,15 +64,12 @@ app.get('/entries', async (req, res) => {
 
 /**
  * POST /entries
- * Creates a new diary entry linked to a user.
- * Body: { content: string, tags: string[], user_id: string }
+ * Creates a new diary entry for the authenticated user.
+ * The user_id is set server-side from the verified JWT — not from the request body.
+ * Body: { content: string, tags: string[] }
  */
-app.post('/entries', async (req, res) => {
-  const { content, tags, user_id } = req.body;
-
-  if (!user_id) {
-    return res.status(400).json({ error: 'user_id is required.' });
-  }
+app.post('/entries', authenticate, async (req, res) => {
+  const { content, tags } = req.body;
 
   if (!content || typeof content !== 'string' || content.trim().length === 0) {
     return res.status(400).json({ error: 'Content is required and must be a non-empty string.' });
@@ -68,7 +84,7 @@ app.post('/entries', async (req, res) => {
     content: content.trim(),
     created_at: new Date().toISOString(),
     tags: sanitizedTags,
-    user_id,
+    user_id: req.user.id,
   };
 
   const { data, error } = await supabase
@@ -87,16 +103,18 @@ app.post('/entries', async (req, res) => {
 
 /**
  * DELETE /entries/:id
- * Deletes a diary entry by its ID.
+ * Deletes a diary entry by ID, but only if it belongs to the authenticated user.
+ * Ownership is enforced server-side via the verified JWT — not client-supplied data.
  */
-app.delete('/entries/:id', async (req, res) => {
+app.delete('/entries/:id', authenticate, async (req, res) => {
   const { id } = req.params;
 
-  // Check if entry exists
+  // Check that the entry exists and belongs to the authenticated user
   const { data: existing, error: fetchErr } = await supabase
     .from('entries')
     .select('id')
     .eq('id', id)
+    .eq('user_id', req.user.id)
     .single();
 
   if (fetchErr || !existing) {

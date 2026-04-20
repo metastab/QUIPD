@@ -40,6 +40,7 @@ const authBtnGithub   = document.getElementById('auth-btn-github');
 // === State ===
 let allEntries = [];
 let currentUser = null;
+let currentToken = null;
 
 // === Initialization ===
 document.addEventListener('DOMContentLoaded', init);
@@ -67,11 +68,13 @@ function attachEventListeners() {
 function handleAuthChange(session) {
   if (session && session.user) {
     currentUser = session.user;
+    currentToken = session.access_token;
     document.body.setAttribute('data-auth', 'true');
     updateAuthUI(currentUser, authBtn);
     fetchEntries();
   } else {
     currentUser = null;
+    currentToken = null;
     document.body.removeAttribute('data-auth');
     updateAuthUI(null, authBtn);
     // Clear entries when logged out
@@ -162,6 +165,13 @@ function handlePaste(e) {
 // === API Functions ===
 
 /**
+ * Returns the Authorization header object for authenticated requests.
+ */
+function authHeaders() {
+  return { 'Authorization': `Bearer ${currentToken}` };
+}
+
+/**
  * Fetches entries for the current user from the backend.
  */
 async function fetchEntries() {
@@ -172,7 +182,7 @@ async function fetchEntries() {
   }
 
   try {
-    const res = await fetch(`${API_BASE}?user_id=${currentUser.id}`);
+    const res = await fetch(API_BASE, { headers: authHeaders() });
     if (!res.ok) throw new Error('Failed to fetch entries');
     allEntries = await res.json();
     renderEntries(allEntries);
@@ -183,13 +193,14 @@ async function fetchEntries() {
 }
 
 /**
- * Sends a new entry to the backend with user_id.
+ * Sends a new entry to the backend.
+ * The user identity is determined server-side from the JWT.
  */
 async function createEntry(content, tags) {
   const res = await fetch(API_BASE, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, tags, user_id: currentUser.id }),
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ content, tags }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -200,9 +211,13 @@ async function createEntry(content, tags) {
 
 /**
  * Deletes an entry by ID from the backend.
+ * Ownership is verified server-side via the JWT.
  */
 async function deleteEntry(id) {
-  const res = await fetch(`${API_BASE}/${id}`, { method: 'DELETE' });
+  const res = await fetch(`${API_BASE}/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || 'Failed to delete entry');
