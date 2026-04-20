@@ -36,14 +36,11 @@ const entryCountEl    = document.getElementById('entry-count');
 const themeToggle     = document.getElementById('theme-toggle');
 const authBtn         = document.getElementById('auth-btn');
 const authBtnGithub   = document.getElementById('auth-btn-github');
-const lockBtn         = document.getElementById('lock-btn');
 
 // === State ===
 let allEntries = [];
 let currentUser = null;
 let currentToken = null;
-let hasPassword = false;
-let isAppLocked = false;
 
 // === Initialization ===
 document.addEventListener('DOMContentLoaded', init);
@@ -60,29 +57,6 @@ function attachEventListeners() {
   entryContent.addEventListener('input', updateCharCount);
   searchInput.addEventListener('input', handleSearch);
   searchClear.addEventListener('click', clearSearch);
-
-  // Lock overlay — unlock form
-  document.getElementById('unlock-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const password = document.getElementById('unlock-password-input').value;
-    if (password) verifyUnlock(password);
-  });
-
-  // Setup overlay — setup form
-  document.getElementById('setup-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const password = document.getElementById('setup-password-input').value;
-    const confirm  = document.getElementById('setup-confirm-input').value;
-    setupPassword(password, confirm);
-  });
-
-  // Setup overlay — close button
-  document.getElementById('setup-close').addEventListener('click', hideSetupOverlay);
-
-  // Lock button in header — opens setup overlay
-  if (lockBtn) {
-    lockBtn.addEventListener('click', showSetupOverlay);
-  }
 }
 
 // === Auth ===
@@ -97,154 +71,16 @@ function handleAuthChange(session) {
     currentToken = session.access_token;
     document.body.setAttribute('data-auth', 'true');
     updateAuthUI(currentUser, authBtn);
-    checkSecurityStatus();
+    fetchEntries();
   } else {
     currentUser = null;
     currentToken = null;
-    hasPassword = false;
-    isAppLocked = false;
     document.body.removeAttribute('data-auth');
-    document.body.removeAttribute('data-has-password');
     updateAuthUI(null, authBtn);
-    hideLockOverlay();
-    hideSetupOverlay();
     // Clear entries when logged out
     allEntries = [];
     renderEntries([]);
   }
-}
-
-// === Security ===
-
-/**
- * Checks whether the user has a password lock configured.
- * Shows the lock overlay or loads entries accordingly.
- */
-async function checkSecurityStatus() {
-  try {
-    const res = await fetch('/security-status', { headers: authHeaders() });
-    if (!res.ok) throw new Error('Failed to check security status');
-    const data = await res.json();
-    hasPassword = data.hasPassword;
-
-    if (hasPassword) {
-      document.body.setAttribute('data-has-password', 'true');
-      isAppLocked = true;
-      showLockOverlay();
-    } else {
-      document.body.removeAttribute('data-has-password');
-      isAppLocked = false;
-      fetchEntries();
-    }
-  } catch (err) {
-    console.error('Security status check failed:', err);
-    // Fail open — load entries normally if status check fails
-    fetchEntries();
-  }
-}
-
-/**
- * Submits the unlock password to the server.
- * On success, hides the lock overlay and loads entries.
- */
-async function verifyUnlock(password) {
-  try {
-    const res = await fetch('/verify-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ password }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Incorrect password');
-
-    isAppLocked = false;
-    hideLockOverlay();
-    fetchEntries();
-    showToast('Diary unlocked', 'success');
-  } catch (err) {
-    showToast(err.message, 'error');
-    // Shake the input
-    const input = document.getElementById('unlock-password-input');
-    if (input) {
-      input.classList.add('input-shake');
-      setTimeout(() => input.classList.remove('input-shake'), 500);
-    }
-  }
-}
-
-/**
- * Submits a new password to the server to enable lock protection.
- */
-async function setupPassword(password, confirmPassword) {
-  if (password !== confirmPassword) {
-    showToast('Passwords do not match', 'error');
-    return;
-  }
-  if (password.length < 6) {
-    showToast('Password must be at least 6 characters', 'error');
-    return;
-  }
-
-  try {
-    const res = await fetch('/setup-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ password }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to set password');
-
-    hasPassword = true;
-    isAppLocked = false;
-    hideSetupOverlay();
-    showToast('Diary lock enabled', 'success');
-  } catch (err) {
-    showToast(err.message, 'error');
-  }
-}
-
-// --- Lock overlay helpers ---
-
-function showLockOverlay() {
-  const overlay = document.getElementById('lock-overlay');
-  if (overlay) {
-    overlay.classList.add('visible');
-    // Focus password field after transition
-    setTimeout(() => {
-      const input = document.getElementById('unlock-password-input');
-      if (input) input.focus();
-    }, 300);
-  }
-}
-
-function hideLockOverlay() {
-  const overlay = document.getElementById('lock-overlay');
-  if (overlay) overlay.classList.remove('visible');
-}
-
-function showSetupOverlay() {
-  if (hasPassword) {
-    showToast('A password is already set', 'error');
-    return;
-  }
-  const overlay = document.getElementById('setup-overlay');
-  if (overlay) {
-    overlay.classList.add('visible');
-    setTimeout(() => {
-      const input = document.getElementById('setup-password-input');
-      if (input) input.focus();
-    }, 300);
-  }
-}
-
-function hideSetupOverlay() {
-  const overlay = document.getElementById('setup-overlay');
-  if (overlay) overlay.classList.remove('visible');
-  // Reset fields
-  const p = document.getElementById('setup-password-input');
-  const c = document.getElementById('setup-confirm-input');
-  if (p) p.value = '';
-  if (c) c.value = '';
 }
 
 // === Theme Toggle ===

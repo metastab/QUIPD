@@ -1,12 +1,10 @@
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
-const bcrypt = require('bcrypt');
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const BCRYPT_ROUNDS = 12;
 
 // --- Supabase Client ---
 const SUPABASE_URL = 'https://bcigoossgislfoebayuf.supabase.co';
@@ -18,30 +16,12 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- In-Memory Unlock Registry ---
-// Maps userId -> expiry timestamp (ms). Cleared on server restart.
-const unlockedSessions = new Map();
-const UNLOCK_TTL_MS = 60 * 60 * 1000; // 1 hour
-
-function isUnlocked(userId) {
-  const expiresAt = unlockedSessions.get(userId);
-  if (!expiresAt) return false;
-  if (Date.now() > expiresAt) {
-    unlockedSessions.delete(userId);
-    return false;
-  }
-  return true;
-}
-
-function unlockSession(userId) {
-  unlockedSessions.set(userId, Date.now() + UNLOCK_TTL_MS);
-}
-
 // --- Auth Middleware ---
 
 /**
  * Extracts and verifies the Supabase JWT from the Authorization header.
  * Attaches the verified user to req.user on success.
+ * Responds with 401 if the token is missing, invalid, or expired.
  */
 async function authenticate(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
@@ -60,140 +40,14 @@ async function authenticate(req, res, next) {
   next();
 }
 
-/**
- * Checks user_security for a password lock.
- * If has_password is true and session is not unlocked, responds 403 { locked: true }.
- * Must be used after authenticate().
- */
-async function checkEntryAccess(req, res, next) {
-  const { data, error } = await supabase
-    .from('user_security')
-    .select('has_password')
-    .eq('user_id', req.user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error('Security check error:', error.message);
-    return res.status(500).json({ error: 'Failed to verify security status.' });
-  }
-
-  const hasPassword = data?.has_password ?? false;
-
-  if (hasPassword && !isUnlocked(req.user.id)) {
-    return res.status(403).json({ locked: true });
-  }
-
-  next();
-}
-
-// --- Security Routes ---
-
-/**
- * GET /security-status
- * Returns whether the authenticated user has a password lock configured.
- */
-app.get('/security-status', authenticate, async (req, res) => {
-  const { data, error } = await supabase
-    .from('user_security')
-    .select('has_password')
-    .eq('user_id', req.user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error('Security status error:', error.message);
-    return res.status(500).json({ error: 'Failed to fetch security status.' });
-  }
-
-  res.json({ hasPassword: data?.has_password ?? false });
-});
-
-/**
- * POST /setup-password
- * Sets a bcrypt-hashed password for the authenticated user.
- * Only allowed if the user does not already have a password set.
- * Body: { password: string }
- */
-app.post('/setup-password', authenticate, async (req, res) => {
-  const { password } = req.body;
-
-  if (!password || typeof password !== 'string' || password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters.' });
-  }
-
-  // Block if password already exists
-  const { data: existing } = await supabase
-    .from('user_security')
-    .select('has_password')
-    .eq('user_id', req.user.id)
-    .maybeSingle();
-
-  if (existing?.has_password) {
-    return res.status(409).json({ error: 'A password is already set.' });
-  }
-
-  const password_hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-
-  const { error } = await supabase
-    .from('user_security')
-    .upsert({
-      user_id: req.user.id,
-      password_hash,
-      has_password: true,
-      created_at: new Date().toISOString(),
-    });
-
-  if (error) {
-    console.error('Setup password error:', error.message);
-    return res.status(500).json({ error: 'Failed to save password.' });
-  }
-
-  // Unlock immediately after setup so user doesn't need to re-enter
-  unlockSession(req.user.id);
-
-  res.json({ success: true });
-});
-
-/**
- * POST /verify-password
- * Verifies the submitted password against the stored bcrypt hash.
- * On success, marks the session as unlocked for 1 hour.
- * Body: { password: string }
- */
-app.post('/verify-password', authenticate, async (req, res) => {
-  const { password } = req.body;
-
-  if (!password) {
-    return res.status(400).json({ error: 'Password is required.' });
-  }
-
-  const { data, error } = await supabase
-    .from('user_security')
-    .select('password_hash')
-    .eq('user_id', req.user.id)
-    .single();
-
-  if (error || !data) {
-    return res.status(404).json({ error: 'No password configured for this account.' });
-  }
-
-  const match = await bcrypt.compare(password, data.password_hash);
-
-  if (!match) {
-    return res.status(401).json({ error: 'Incorrect password.' });
-  }
-
-  unlockSession(req.user.id);
-  res.json({ success: true });
-});
-
-// --- Entries Routes ---
+// --- API Routes ---
 
 /**
  * GET /entries
  * Returns all diary entries for the authenticated user, sorted newest first.
- * Blocked with { locked: true } if user has a password and session is not unlocked.
+ * The user identity is taken from the verified JWT — not from query params.
  */
-app.get('/entries', authenticate, checkEntryAccess, async (req, res) => {
+app.get('/entries', authenticate, async (req, res) => {
   const { data, error } = await supabase
     .from('entries')
     .select('*')
@@ -211,10 +65,10 @@ app.get('/entries', authenticate, checkEntryAccess, async (req, res) => {
 /**
  * POST /entries
  * Creates a new diary entry for the authenticated user.
- * Blocked with { locked: true } if user has a password and session is not unlocked.
+ * The user_id is set server-side from the verified JWT — not from the request body.
  * Body: { content: string, tags: string[] }
  */
-app.post('/entries', authenticate, checkEntryAccess, async (req, res) => {
+app.post('/entries', authenticate, async (req, res) => {
   const { content, tags } = req.body;
 
   if (!content || typeof content !== 'string' || content.trim().length === 0) {
@@ -249,11 +103,10 @@ app.post('/entries', authenticate, checkEntryAccess, async (req, res) => {
 
 /**
  * DELETE /entries/:id
- * Deletes a diary entry by ID.
- * Blocked with { locked: true } if user has a password and session is not unlocked.
- * Ownership is enforced server-side via the verified JWT.
+ * Deletes a diary entry by ID, but only if it belongs to the authenticated user.
+ * Ownership is enforced server-side via the verified JWT — not client-supplied data.
  */
-app.delete('/entries/:id', authenticate, checkEntryAccess, async (req, res) => {
+app.delete('/entries/:id', authenticate, async (req, res) => {
   const { id } = req.params;
 
   // Check that the entry exists and belongs to the authenticated user
