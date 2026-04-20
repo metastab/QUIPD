@@ -2,6 +2,8 @@
 
 > **Quite Unique and Intelligent Personal Diary** — a calm, distraction-free journaling app with secure cloud sync.
 
+**Live:** [quipd.vercel.app](https://quipd.vercel.app)
+
 ---
 
 ## Features
@@ -38,7 +40,6 @@ QUIPD/
 │   └── script.js       # App logic (entries, editor, search, rendering)
 ├── server.js           # Express API with JWT middleware
 ├── package.json
-├── .env.example        # Required environment variables (template)
 └── .gitignore
 ```
 
@@ -63,11 +64,7 @@ cd QUIPD
 # 2. Install dependencies
 npm install
 
-# 3. Configure environment variables
-cp .env.example .env
-# Fill in your Supabase URL and anon key in .env
-
-# 4. Start the development server
+# 3. Start the server
 npm start
 ```
 
@@ -75,19 +72,6 @@ The app will be available at `http://localhost:3000`.
 
 ---
 
-## Environment Variables
-
-Copy `.env.example` to `.env` and fill in the values:
-
-```env
-SUPABASE_URL=https://<your-project-ref>.supabase.co
-SUPABASE_ANON_KEY=<your-anon-key>
-PORT=3000
-```
-
-> **Never commit `.env` to version control.** It is already listed in `.gitignore`.
-
----
 
 ## Database Setup
 
