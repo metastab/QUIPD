@@ -83,6 +83,14 @@
           </svg>
         </button>
 
+        <!-- Lock setup button: visible when logged in with no password set -->
+        <button class="lock-btn" id="lock-btn" title="Set up diary lock" aria-label="Set up diary lock">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </button>
+
       </div>
     </header>
 
@@ -184,6 +192,70 @@
       <p>Quipd &mdash; your thoughts, privately kept.</p>
     </footer>
 
+  </div>
+
+  <!-- Password lock overlay — shown when diary is locked -->
+  <div id="lock-overlay" class="lock-overlay" role="dialog" aria-modal="true" aria-labelledby="lock-title">
+    <div class="lock-card">
+      <div class="lock-icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </div>
+      <h2 class="lock-title" id="lock-title">Diary Locked</h2>
+      <p class="lock-subtitle">Enter your password to unlock your entries.</p>
+      <form id="unlock-form" class="lock-form" autocomplete="off">
+        <div class="lock-input-wrap">
+          <input
+            type="password"
+            id="unlock-password-input"
+            class="lock-input"
+            placeholder="Password"
+            autocomplete="current-password"
+            aria-label="Unlock password"
+          />
+        </div>
+        <button type="submit" class="btn btn-primary lock-submit">Unlock</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Password setup overlay — shown when user wants to add a lock -->
+  <div id="setup-overlay" class="lock-overlay" role="dialog" aria-modal="true" aria-labelledby="setup-title">
+    <div class="lock-card">
+      <button class="lock-close" id="setup-close" aria-label="Close">&times;</button>
+      <div class="lock-icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+      </div>
+      <h2 class="lock-title" id="setup-title">Lock Your Diary</h2>
+      <p class="lock-subtitle">Set a password to protect your entries. You'll need it each time you sign in.</p>
+      <form id="setup-form" class="lock-form" autocomplete="off">
+        <div class="lock-input-wrap">
+          <input
+            type="password"
+            id="setup-password-input"
+            class="lock-input"
+            placeholder="New password (min. 6 chars)"
+            autocomplete="new-password"
+            aria-label="New password"
+          />
+        </div>
+        <div class="lock-input-wrap">
+          <input
+            type="password"
+            id="setup-confirm-input"
+            class="lock-input"
+            placeholder="Confirm password"
+            autocomplete="new-password"
+            aria-label="Confirm password"
+          />
+        </div>
+        <button type="submit" class="btn btn-primary lock-submit">Enable Lock</button>
+      </form>
+    </div>
   </div>
 
   <script src="auth.js"></script>
